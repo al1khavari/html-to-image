@@ -10,6 +10,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 import { toArray } from './util';
 import { shouldEmbed, embedResources } from './embedResources';
 const cssFetchCache = {};
+const fontsCSSTextCache = {};
 function fetchCSS(url) {
     const cache = cssFetchCache[url];
     if (cache != null) {
@@ -104,7 +105,7 @@ function getCSSRules(styleSheets, options) {
         styleSheets.forEach((sheet) => {
             if ('cssRules' in sheet) {
                 try {
-                    toArray(Object.prototype.hasOwnProperty.call(sheet, 'cssRules')).forEach((item, index) => {
+                    toArray(sheet.cssRules).forEach((item, index) => {
                         if (item.type === CSSRule.IMPORT_RULE) {
                             let importIndex = index + 1;
                             const url = item.href;
@@ -114,7 +115,7 @@ function getCSSRules(styleSheets, options) {
                                 try {
                                     sheet.insertRule(rule, rule.startsWith('@import')
                                         ? (importIndex += 1)
-                                        : Object.prototype.hasOwnProperty.call(sheet, 'cssRules').length);
+                                        : sheet.cssRules.length);
                                 }
                                 catch (error) {
                                     console.error('Error inserting rule from remote css', {
@@ -136,8 +137,7 @@ function getCSSRules(styleSheets, options) {
                         deferreds.push(fetchCSS(sheet.href)
                             .then((metadata) => metadata ? embedFonts(metadata, options) : '')
                             .then((cssText) => parseCSS(cssText).forEach((rule) => {
-                            inline.insertRule(rule, Object.prototype.hasOwnProperty.call(sheet, 'cssRules')
-                                .length);
+                            inline.insertRule(rule, sheet.cssRules.length);
                         }))
                             .catch((err) => {
                             console.error('Error loading remote stylesheet', err.toString());
@@ -152,7 +152,7 @@ function getCSSRules(styleSheets, options) {
             styleSheets.forEach((sheet) => {
                 if ('cssRules' in sheet) {
                     try {
-                        toArray(Object.prototype.hasOwnProperty.call(sheet, 'cssRules')).forEach((item) => {
+                        toArray(sheet.cssRules).forEach((item) => {
                             ret.push(item);
                         });
                     }
@@ -191,17 +191,32 @@ export function getWebFontCSS(node, options) {
                 : null;
             return embedResources(rule.cssText, baseUrl, options);
         })))
-            .then((cssTexts) => cssTexts.join('\n'));
+            .then((cssTexts) => {
+            const response = cssTexts.join('\n');
+            if (options.fontsCacheKey) {
+                fontsCSSTextCache[options.fontsCacheKey] = response;
+            }
+            return response;
+        });
     });
 }
 export function embedWebFonts(clonedNode, options) {
     return __awaiter(this, void 0, void 0, function* () {
-        return (options.fontEmbedCSS != null
-            ? Promise.resolve(options.fontEmbedCSS)
-            : getWebFontCSS(clonedNode, options)).then((cssText) => {
+        let embedWebFontsPromise;
+        if (options.fontEmbedCSS) {
+            embedWebFontsPromise = Promise.resolve(options.fontEmbedCSS);
+        }
+        else if (options.fontsCacheKey &&
+            fontsCSSTextCache[options.fontsCacheKey]) {
+            embedWebFontsPromise = Promise.resolve(fontsCSSTextCache[options.fontsCacheKey]);
+        }
+        else {
+            embedWebFontsPromise = getWebFontCSS(clonedNode, options);
+        }
+        return embedWebFontsPromise.then((cssText) => {
             const styleNode = document.createElement('style');
-            const sytleContent = document.createTextNode(cssText);
-            styleNode.appendChild(sytleContent);
+            const styledContent = document.createTextNode(cssText);
+            styleNode.appendChild(styledContent);
             if (clonedNode.firstChild) {
                 clonedNode.insertBefore(styleNode, clonedNode.firstChild);
             }

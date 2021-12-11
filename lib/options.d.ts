@@ -78,4 +78,10 @@ export interface Options {
      *
      */
     fetchRequestInit?: RequestInit;
+    /**
+     *
+     * the string for the caching the fonts for improve performance
+     *
+     */
+    fontsCacheKey?: string;
 }
